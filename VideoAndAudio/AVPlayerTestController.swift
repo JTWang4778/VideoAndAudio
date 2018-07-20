@@ -48,6 +48,10 @@ class AVPlayerTestController: UIViewController {
         guard let url = localVideoUrl else {
             return
         }
+        
+        
+        
+        
         let item = AVPlayerItem.init(url: url)
         let player = AVPlayer.init(playerItem: item)
         playerItem = item
