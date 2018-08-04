@@ -34,7 +34,7 @@ class AVPlayerTestController: UIViewController {
     
     /*
         1,画面的展示 （单纯的AVPlayer是没有展示层的，需要自己实现）
-        2,监听播放进度
+        2,监听播放进度  (AVPlayer 提供了两个API，可以监听播放进度 )
         3,KVO添加对AVPlayerItem监听的时候，要保证不要重复添加监听， 会崩溃
         4，CMTime 很有意思的一个结构体  有两个关键值  value  和  timescale, seconds =  value /  timescale,  其中测试发现 timescale只能是整数
          5, loadValuesAsynchronouslyForKeys ？
@@ -45,15 +45,17 @@ class AVPlayerTestController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        guard let url = localVideoUrl else {
+        guard let url = URL.init(string: urlStr) else {
             return
         }
-        
-        
+//
+//
         
         
         let item = AVPlayerItem.init(url: url)
         let player = AVPlayer.init(playerItem: item)
+        // 设置当前播放器音量
+        player.volume = 0.2  // 当前player实例的相对于当前系统音量的音量，  0表示静音，   1表示和当前系统音量一样。  如果想整体设置系统音量可以使用  MPVolumeView
         playerItem = item
         self.player = player
         playerLayer = AVPlayerLayer.init(player: player)
@@ -96,32 +98,63 @@ class AVPlayerTestController: UIViewController {
         playerItem.addObserver(self, forKeyPath: "status", options: NSKeyValueObservingOptions.new, context: nil)
         playerItem.addObserver(self, forKeyPath: "loadedTimeRanges", options: NSKeyValueObservingOptions.new, context: nil)
         playerItem.addObserver(self, forKeyPath: "playbackBufferEmpty", options: NSKeyValueObservingOptions.new, context: nil)
+        playerItem.addObserver(self, forKeyPath: "playbackBufferFull", options: NSKeyValueObservingOptions.new, context: nil)
         playerItem.addObserver(self, forKeyPath: "playbackLikelyToKeepUp", options: NSKeyValueObservingOptions.new, context: nil)
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(itemTimeJumped(noti:)), name: Notification.Name.AVPlayerItemTimeJumped, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(itemPlaybackStalled(noti:)), name: Notification.Name.AVPlayerItemPlaybackStalled, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(itemDidPlayToEnd(noti:)), name: NSNotification.Name.AVPlayerItemDidPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(itemFailedToPlayToEnd(noti:)), name: NSNotification.Name.AVPlayerItemFailedToPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(itemNewAccessLogEntry(noti:)), name: NSNotification.Name.AVPlayerItemNewAccessLogEntry, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(itemNewErrorLogEntry(noti:)), name: NSNotification.Name.AVPlayerItemNewErrorLogEntry, object: nil)
+    }
+    
+    @objc func itemTimeJumped(noti: Notification){
+        print(noti)
+    }
+    
+    @objc func itemPlaybackStalled(noti: Notification){
+        print(noti)
+    }
+    
+    @objc func itemDidPlayToEnd(noti: Notification){
+        print(noti)
+    }
+    
+    @objc func itemFailedToPlayToEnd(noti: Notification){
+        print(noti)
+    }
+    
+    @objc func itemNewAccessLogEntry(noti: Notification){
+        print(noti)
+    }
+    
+    @objc func itemNewErrorLogEntry(noti: Notification){
+        print(noti)
     }
     
     fileprivate func removeItemObserver() {
         playerItem?.removeObserver(self, forKeyPath: "status")
         playerItem?.removeObserver(self, forKeyPath: "loadedTimeRanges")
         playerItem?.removeObserver(self, forKeyPath: "playbackBufferEmpty")
+        playerItem?.removeObserver(self, forKeyPath: "playbackBufferFull")
         playerItem?.removeObserver(self, forKeyPath: "playbackLikelyToKeepUp")
+        NotificationCenter.default.removeObserver(self)
     }
     
     
-    
-    /// 对播放器 进度添加监听  提供了两个方法，  第一个一个是指定时间间隔，   第二个是指定时间点，使用时回调方式是闭包，  所以在闭包中要注意避免循环引用
     fileprivate func addPlayBackObserver(){
         if let player = self.player {
-            player.addPeriodicTimeObserver(forInterval: CMTime.init(value: CMTimeValue(1.0), timescale: CMTimeScale(1.0)), queue: DispatchQueue.main) { [unowned self] (cmtime) in
+            player.addPeriodicTimeObserver(forInterval: CMTime.init(value: CMTimeValue(1.0), timescale: CMTimeScale(1.0)), queue: DispatchQueue.main) { (cmtime) in
                 let second  = CMTimeGetSeconds(cmtime)
-//                print("🐂\(second)")
-                print("\(self.player?.rate)")
+                print("🐂\(second)")
             }
             
             let asdf = NSValue.init(time: CMTime.init(value: CMTimeValue(10), timescale: CMTimeScale(1)))
             let asdasdff = NSValue.init(time: CMTime.init(value: CMTimeValue(20), timescale: CMTimeScale(1)))
-
+            
             player.addBoundaryTimeObserver(forTimes: [asdf,asdasdff], queue: DispatchQueue.main) { [unowned self] in
-
+                
                 print("❤️\(self.playerItem?.currentTime())")
             }
         }
@@ -131,15 +164,28 @@ class AVPlayerTestController: UIViewController {
         
         guard let playerItem = object as? AVPlayerItem else { return }
         
+        
         if keyPath == "status" {
             if playerItem.status == AVPlayerItemStatus.readyToPlay {
                 print("readyToPlay")
-//                let duration  = CMTimeGetSeconds(playerItem.duration)
-//                self.dura = Float(duration)
-//                durationTimeLabel.text = timeStr(seconds: Int(duration))
-//                play()
-//                isPlaying = true
+                //                let duration  = CMTimeGetSeconds(playerItem.duration)
+                //                self.dura = Float(duration)
+                //                durationTimeLabel.text = timeStr(seconds: Int(duration))
+                //                play()
+                //                isPlaying = true
                 player?.play()
+                
+                /*
+                 AVPlayer rate表示当前播放速率， 正常情况下0表示暂停播放， 1.0表示正常播放。
+                 能否快进或者快退，或者慢进慢退取决于当前playerItem，  playerItem用了几个只读属性来表示当前item是否支持快放和慢放。其中 canPlaySlowForward，canPlayFastForward 表示是否支持快放 慢放， rate大于0， 其中canPlayReverse表示是否支持回退，  回退时rate小于0.
+                 print(playerItem.canPlaySlowForward)
+                 print(playerItem.canPlayFastForward)
+                 print(playerItem.canPlayReverse)
+                 print(playerItem.canPlaySlowReverse)
+                 print(playerItem.canPlayFastReverse)
+                 */
+                player?.rate = 1.0;
+                
                 addPlayBackObserver()
                 
                 
@@ -160,8 +206,10 @@ class AVPlayerTestController: UIViewController {
         } else if keyPath == "playbackBufferEmpty" {
             
             print("playbackBufferEmpty")
-        } else if keyPath == "playbackLikelyToKeepUp" {
+        }else if keyPath == "playbackBufferFull" {
             
+            print("playbackBufferFull")
+        } else if keyPath == "playbackLikelyToKeepUp" {
             // 当缓冲好的时候
             print("playbackLikelyToKeepUp")
         }
